@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"casdoor-proxy/cache"
 	"casdoor-proxy/option"
 	"context"
 	"github.com/gin-contrib/sessions/cookie"
@@ -17,6 +18,7 @@ type Proxy struct {
 	option       option.ProxyOption
 	oauth2Config *oauth2.Config
 	cookieStore  cookie.Store
+	stateCache   cache.Cache
 	rp           *httputil.ReverseProxy
 }
 

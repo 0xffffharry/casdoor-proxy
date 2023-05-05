@@ -1,8 +1,9 @@
 package proxy
 
 import (
+	"casdoor-proxy/cache"
 	"casdoor-proxy/option"
-	"casdoor-proxy/pkg"
+	"casdoor-proxy/tools"
 	"casdoor-proxy/webui"
 	"context"
 	"encoding/gob"
@@ -13,6 +14,7 @@ import (
 	"github.com/gin-contrib/sessions/redis"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	redis2 "github.com/gomodule/redigo/redis"
 	golog "github.com/yaotthaha/go-log"
 	"golang.org/x/oauth2"
 	golangLog "log"
@@ -21,7 +23,6 @@ import (
 	"net/netip"
 	"net/url"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -60,10 +61,23 @@ func (p *Proxy) Run() error {
 	}
 	p.logger.Info("oidc init success")
 
-	p.logger.Debug("init cookie store")
+	var redisPool *redis2.Pool
+
 	if p.option.RedisOption != nil {
+		redisPool = &redis2.Pool{
+			MaxIdle:     64,
+			MaxActive:   64,
+			IdleTimeout: 1 * time.Minute,
+			Dial: func() (redis2.Conn, error) {
+				return redis2.Dial("tcp", (*netip.AddrPort)(p.option.RedisOption.Address).String(), redis2.DialPassword(p.option.RedisOption.Password), redis2.DialDatabase(int(p.option.RedisOption.DB)))
+			},
+		}
+	}
+
+	p.logger.Debug("init cookie store")
+	if redisPool != nil {
 		p.logger.Info("use redis for cookie store")
-		p.cookieStore, err = redis.NewStoreWithDB(64, "tcp", (*netip.AddrPort)(p.option.RedisOption.Address).String(), p.option.RedisOption.Password, strconv.Itoa(int(p.option.RedisOption.DB)), []byte(p.option.CookieSecret))
+		p.cookieStore, err = redis.NewStoreWithPool(redisPool, []byte(p.option.CookieSecret))
 		if err != nil {
 			p.logger.Fatalf("create redis store error: %s", err.Error())
 			return err
@@ -78,6 +92,16 @@ func (p *Proxy) Run() error {
 		MaxAge: int(p.option.CookieExpire.Seconds()),
 	})
 	p.logger.Info("cookie store init success")
+
+	p.logger.Info("init state cache")
+	if redisPool != nil {
+		p.logger.Info("use redis for state cache")
+		p.stateCache = cache.NewRedisCache(redisPool)
+	} else {
+		p.logger.Info("use memory for state cache")
+		p.stateCache = cache.NewCacheMap(p.ctx)
+	}
+	p.logger.Info("state cache init success")
 
 	p.logger.Debug("init gin engine")
 	engine := gin.New()
@@ -219,15 +243,13 @@ func (p *Proxy) initHandler(engine *gin.Engine) error {
 
 func (p *Proxy) login(ginCtx *gin.Context) {
 	session := sessions.Default(ginCtx)
-	session.Delete("state")
 	session.Delete("matchers")
 	session.Delete("user")
-	state := pkg.Random(64)
-	session.Set("state", state)
-	err := session.Save()
+	state := tools.Random(64)
+	err := p.stateCache.Set(fmt.Sprintf("state-%s", state), "", time.Now().Add(10*time.Minute))
 	if err != nil {
-		p.logger.Errorf("save session error: %s", err.Error())
-		p.errorInternalServerError(ginCtx.Writer, "save session error")
+		p.logger.Errorf("set state cache error: %s", err.Error())
+		p.errorInternalServerError(ginCtx.Writer, "set state cache error")
 		return
 	}
 	ginCtx.Redirect(http.StatusFound, p.oauth2Config.AuthCodeURL(state))
@@ -243,7 +265,6 @@ func (p *Proxy) logout(ginCtx *gin.Context) {
 	} else {
 		user = "unknown"
 	}
-	session.Delete("state")
 	session.Delete("matchers")
 	session.Delete("user")
 	err := session.Save()
@@ -266,9 +287,9 @@ func (p *Proxy) callback(ginCtx *gin.Context) {
 
 	session := sessions.Default(ginCtx)
 
-	sessionStateAny := session.Get("state")
-	if sessionStateAny == nil {
-		session.Delete("state")
+	_, _, err := p.stateCache.GetAndDel(fmt.Sprintf("state-%s", queryState))
+	if err != nil {
+		p.logger.Errorf("session state not match: %s", err.Error())
 		session.Delete("matchers")
 		session.Delete("user")
 		err := session.Save()
@@ -277,26 +298,9 @@ func (p *Proxy) callback(ginCtx *gin.Context) {
 			p.errorInternalServerError(ginCtx.Writer, "save session error")
 			return
 		}
-		p.logger.Errorf("session state not found")
-		p.errorBadRequest(ginCtx.Writer, "session state not found")
-		return
-	}
-	sessionState := sessionStateAny.(string)
-	if sessionState != queryState {
-		session.Delete("state")
-		session.Delete("matchers")
-		session.Delete("user")
-		err := session.Save()
-		if err != nil {
-			p.logger.Errorf("save session error: %s", err.Error())
-			p.errorInternalServerError(ginCtx.Writer, "save session error")
-			return
-		}
-		p.logger.Errorf("session state not match")
 		p.errorBadRequest(ginCtx.Writer, "session state not match")
 		return
 	}
-	session.Delete("state")
 	session.Delete("matchers")
 	session.Delete("user")
 
@@ -433,7 +437,6 @@ func (p *Proxy) auth(ginCtx *gin.Context) bool { // true: allow, false: deny
 	matchersAny := session.Get("matchers")
 	if matchersAny == nil {
 		session.Delete("matchers")
-		session.Delete("state")
 		session.Delete("user")
 		err := session.Save()
 		if err != nil {
