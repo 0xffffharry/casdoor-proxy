@@ -70,8 +70,28 @@
         transform: translate(-50%, -50%);
     }
 
-    .box-card {
-        width: 400px;
+    @media screen and (min-width: 550px) {
+        .box-card {
+            width: 30rem;
+        }
+    }
+
+    @media screen and (max-width: 550px) and (min-width: 370px) {
+        .box-card {
+            width: 20rem;
+        }
+    }
+
+    @media screen and (max-width: 370px) and (min-width: 270px) {
+        .box-card {
+            width: 15rem;
+        }
+    }
+
+    @media screen and (max-width: 270px) {
+        .box-card {
+            width: 10rem;
+        }
     }
 </style>
 </html>
