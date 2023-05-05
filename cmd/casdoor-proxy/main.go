@@ -2,11 +2,11 @@ package casdoor_proxy
 
 import (
 	"casdoor-proxy/option"
-	"casdoor-proxy/pkg/log"
 	"casdoor-proxy/proxy"
 	"context"
 	"encoding/json"
 	"github.com/spf13/cobra"
+	golog "github.com/yaotthaha/go-log"
 	"os"
 	"os/signal"
 	"sync"
@@ -28,12 +28,12 @@ func Execute() {
 
 var (
 	paramConfig   string
-	defaultLogger log.LoggerInterface
+	defaultLogger golog.Logger
 )
 
 func init() {
 	mainCommand.PersistentFlags().StringVarP(&paramConfig, "config", "c", "config.json", "config file")
-	defaultLogger = log.NewLogger(os.Stdout, os.Stderr)
+	defaultLogger = golog.NewSimpleLogger()
 }
 
 func run() int {
@@ -56,10 +56,7 @@ func run() int {
 		return 1
 	}
 
-	var (
-		output    = os.Stdout
-		errOutput = os.Stderr
-	)
+	logger := golog.NewSimpleLogger().SetFormatFunc(golog.DefaultFormatFunc)
 
 	if opt.LogOption.Output != "" {
 		f, err := os.OpenFile(opt.LogOption.Output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o666)
@@ -68,15 +65,13 @@ func run() int {
 			return 1
 		}
 		defer f.Close()
-		output = f
-		errOutput = f
+		logger.SetOutput(f)
+		logger.SetErrorOutput(f)
 	}
-
-	logger := log.NewLogger(output, errOutput).SetDebug(opt.LogOption.Debug)
-
 	if opt.LogOption.DisableTime {
-		logger.DisableTime()
+		logger.SetFormatFunc(golog.DefaultWithoutTimeFormatFunc)
 	}
+	logger.SetDebug(opt.LogOption.Debug)
 
 	logger.Info("casdoor-proxy start")
 	defer logger.Info("casdoor-proxy stop")
@@ -91,7 +86,7 @@ func run() int {
 		wg.Add(1)
 		go func(option option.ProxyOption) {
 			defer wg.Done()
-			err := proxy.NewProxy(ctx, logger.NewTagLogger(option.Tag), option).Run()
+			err := proxy.NewProxy(ctx, golog.NewTagLogger(logger, option.Tag), option).Run()
 			if err != nil {
 				hErr.Store(true)
 			}
@@ -105,7 +100,7 @@ func run() int {
 	return 0
 }
 
-func handlerSignal(cancel context.CancelFunc, logger log.LoggerInterface) {
+func handlerSignal(cancel context.CancelFunc, logger golog.Logger) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
 	sn := <-c

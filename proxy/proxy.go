@@ -3,7 +3,6 @@ package proxy
 import (
 	"casdoor-proxy/option"
 	"casdoor-proxy/pkg"
-	"casdoor-proxy/pkg/log"
 	"casdoor-proxy/webui"
 	"context"
 	"encoding/gob"
@@ -14,8 +13,9 @@ import (
 	"github.com/gin-contrib/sessions/redis"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	golog "github.com/yaotthaha/go-log"
 	"golang.org/x/oauth2"
-	golog "log"
+	golangLog "log"
 	"net/http"
 	"net/http/httputil"
 	"net/netip"
@@ -31,10 +31,7 @@ func init() {
 	gob.Register([]*matcher{})
 }
 
-func NewProxy(ctx context.Context, logger log.TagLoggerInterface, option option.ProxyOption) *Proxy {
-	if logger == nil {
-		logger = log.NewLogger(nil, nil).NewTagLogger(option.Tag)
-	}
+func NewProxy(ctx context.Context, logger golog.Logger, option option.ProxyOption) *Proxy {
 	return &Proxy{
 		ctx:    ctx,
 		logger: logger,
@@ -43,8 +40,8 @@ func NewProxy(ctx context.Context, logger log.TagLoggerInterface, option option.
 }
 
 func (p *Proxy) Run() error {
-	p.logger.Infof("proxy `%s `start", p.option.Tag)
-	defer p.logger.Infof("proxy `%s `stop", p.option.Tag)
+	p.logger.Info("proxy start")
+	defer p.logger.Info("proxy stop")
 
 	p.logger.Debugf("request issue url: %s", p.option.IssueURL.String())
 	reqIssueCtx, reqIssueCancel := context.WithTimeout(p.ctx, 1*time.Minute)
@@ -161,7 +158,7 @@ func singleJoiningSlash(a, b string) string {
 }
 
 func (p *Proxy) initHandler(engine *gin.Engine) error {
-	ginLogger := p.logger.NewTagLogger("Gin")
+	ginLogger := golog.NewTagLogger(p.logger, "gin")
 	engine.Use(func(ginCtx *gin.Context) {
 		defer func() {
 			err := recover()
@@ -175,7 +172,7 @@ func (p *Proxy) initHandler(engine *gin.Engine) error {
 		ginCtx.Next()
 	})
 	engine.Use(gin.LoggerWithConfig(gin.LoggerConfig{
-		Output: log.NewGinLogWriter(ginLogger, log.DebugLevel),
+		Output: golog.NewLogWriter(ginLogger, golog.Debug),
 		Formatter: func(params gin.LogFormatterParams) string {
 			if params.ErrorMessage != "" {
 				return fmt.Sprintf("%s [%s] [%d] %s %s, errmsg: %s", params.ClientIP, params.Method, params.StatusCode, params.Latency, params.Path, params.ErrorMessage)
@@ -214,7 +211,7 @@ func (p *Proxy) initHandler(engine *gin.Engine) error {
 		p.logger.Errorf("reverse proxy error: %s", err.Error())
 		p.errorBadGateway(w, err.Error())
 	}
-	reverseProxy.ErrorLog = golog.New(log.NewSimpleWriter(p.logger, log.ErrorLevel), "reverse proxy error: ", 0)
+	reverseProxy.ErrorLog = golangLog.New(golog.NewLogWriter(golog.NewTagLogger(ginLogger, "ReverseProxy"), golog.Error), "", 0)
 	p.rp = reverseProxy
 
 	return nil
