@@ -4,6 +4,7 @@ import (
 	"casdoor-proxy/option"
 	"casdoor-proxy/pkg"
 	"casdoor-proxy/pkg/log"
+	"casdoor-proxy/webui"
 	"context"
 	"encoding/gob"
 	"fmt"
@@ -190,6 +191,9 @@ func (p *Proxy) initHandler(engine *gin.Engine) error {
 	group.GET("/logout", p.logout)
 	group.GET("/userinfo", p.userinfo)
 	group.GET("/callback", p.callback)
+	group.GET("/icon.png", func(c *gin.Context) {
+		c.FileFromFS("icon.png", http.FS(webui.Icon))
+	})
 	engine.NoRoute(p.reverseProxy)
 
 	u := (*url.URL)(p.option.Upstream)
@@ -399,13 +403,32 @@ func (p *Proxy) userinfo(ginCtx *gin.Context) {
 	userAny := session.Get("user")
 	if userAny == nil {
 		ginCtx.Writer.WriteHeader(http.StatusOK)
-		ginCtx.Writer.Write([]byte("userinfo not found"))
+		tml := webui.GetTemplate("userinfo")
+		err := tml.Execute(ginCtx.Writer, map[string]interface{}{
+			"Organization": "",
+			"Name":         "",
+			"DisplayName":  "",
+		})
+		if err != nil {
+			p.logger.Errorf("execute template error: %s", err.Error())
+			return
+		}
 		return
 	}
 	user := userAny.(string)
 	users := strings.Split(user, "/")
+
 	ginCtx.Writer.WriteHeader(http.StatusOK)
-	ginCtx.Writer.Write([]byte(fmt.Sprintf("organization: %s\nname: %s\ndisplayName: %s", users[0], users[1], users[2])))
+	tml := webui.GetTemplate("userinfo")
+	err := tml.Execute(ginCtx.Writer, map[string]interface{}{
+		"Organization": users[0],
+		"Name":         users[1],
+		"DisplayName":  users[2],
+	})
+	if err != nil {
+		p.logger.Errorf("execute template error: %s", err.Error())
+		return
+	}
 }
 
 func (p *Proxy) auth(ginCtx *gin.Context) bool { // true: allow, false: deny
@@ -441,30 +464,47 @@ func (p *Proxy) reverseProxy(ginCtx *gin.Context) {
 
 func (p *Proxy) errorBadGateway(w http.ResponseWriter, errMsg string) {
 	w.WriteHeader(http.StatusBadGateway)
-	w.Write([]byte("502 Bad Gateway"))
+	p.errorPage(w, "502 Bad Gateway", errMsg)
 }
 
 func (p *Proxy) errorInternalServerError(w http.ResponseWriter, errMsg string) {
 	w.WriteHeader(http.StatusInternalServerError)
-	w.Write([]byte("500 Internal Server Error"))
+	p.errorPage(w, "500 Internal Server Error", errMsg)
 }
 
 func (p *Proxy) errorServiceUnavailable(w http.ResponseWriter, errMsg string) {
 	w.WriteHeader(http.StatusServiceUnavailable)
-	w.Write([]byte("503 Service Unavailable"))
+	p.errorPage(w, "503 Service Unavailable", errMsg)
 }
 
 func (p *Proxy) errorForbidden(w http.ResponseWriter, errMsg string) {
 	w.WriteHeader(http.StatusForbidden)
-	w.Write([]byte("403 Forbidden"))
+	p.errorPage(w, "403 Forbidden", errMsg)
 }
 
 func (p *Proxy) errorBadRequest(w http.ResponseWriter, errMsg string) {
 	w.WriteHeader(http.StatusBadRequest)
-	w.Write([]byte("400 Bad Request"))
+	p.errorPage(w, "400 Bad Request", errMsg)
+}
+
+func (p *Proxy) errorPage(w http.ResponseWriter, errHeader string, errMessage string) {
+	tml := webui.GetTemplate("error")
+	err := tml.Execute(w, map[string]interface{}{
+		"Error":        errHeader,
+		"ErrorMessage": errMessage,
+	})
+	if err != nil {
+		p.logger.Errorf("execute template error: %s", err.Error())
+		return
+	}
 }
 
 func (p *Proxy) logoutPage(w http.ResponseWriter, user string) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf("user `%s` logout success", user)))
+	tml := webui.GetTemplate("logout")
+	err := tml.Execute(w, nil)
+	if err != nil {
+		p.logger.Errorf("execute template error: %s", err.Error())
+		return
+	}
 }

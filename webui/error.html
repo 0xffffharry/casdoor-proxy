@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <link rel="icon" type="image/x-icon" href="/oauth2/icon.png">
+    <script src="//cdn.staticfile.org/vue/3.2.47/vue.global.js"></script>
+    <!-- import CSS -->
+    <link rel="stylesheet" href="//cdn.staticfile.org/element-plus/2.3.4/index.css">
+    <!-- import JavaScript -->
+    <script src="//cdn.staticfile.org/element-plus/2.3.4/index.full.js"></script>
+    <script src="//cdn.staticfile.org/element-plus-icons-vue/2.1.0/index.iife.min.js"></script>
+    <title>{{ .Error }}</title>
+</head>
+<body style="background-color: whitesmoke">
+<div id="app">
+    <el-container>
+        <el-main class="element">
+            <el-card class="box-card">
+                <template #header>
+                    <div>
+                        <el-icon>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-x-circle" viewBox="0 0 16 16">
+                                <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                                <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+                            </svg>
+                        </el-icon>
+                        {{ .Error }}
+                    </div>
+                </template>
+                <div style="display: flex; justify-content: center; align-items: center">
+                    <el-col>
+                        <el-row span="18" style="font-size: 14px; margin-bottom: 18px; height: 100%">
+                            {{ .ErrorMessage }}
+                        </el-row>
+                        <el-row span="6" style="font-size: 14px; margin-bottom: 18px; height: 100%">
+                            <el-button size="large" @click="login()" type="primary" plain>
+                                <template #icon>
+                                    <el-icon>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-box-arrow-in-right" viewBox="0 0 16 16">
+                                            <path fill-rule="evenodd" d="M6 3.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 0-1 0v2A1.5 1.5 0 0 0 6.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 14.5 2h-8A1.5 1.5 0 0 0 5 3.5v2a.5.5 0 0 0 1 0v-2z"/>
+                                            <path fill-rule="evenodd" d="M11.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 1 0-.708.708L10.293 7.5H1.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3z"/>
+                                        </svg>
+                                    </el-icon>
+                                </template>
+                                重新登录
+                            </el-button>
+                        </el-row>
+                    </el-col>
+                </div>
+            </el-card>
+        </el-main>
+    </el-container>
+</div>
+<script>
+    const App = {
+        data() {
+            return {
+            };
+        },
+        methods: {
+            login: function () {
+                window.location.href = "/oauth2/login";
+            }
+        }
+    };
+    const app = Vue.createApp(App);
+    app.use(ElementPlus);
+    app.mount("#app");
+</script>
+</body>
+<style>
+    .element {
+        position: absolute;
+        top: 40%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+    }
+
+    .box-card {
+        width: 400px;
+    }
+</style>
+</html>
